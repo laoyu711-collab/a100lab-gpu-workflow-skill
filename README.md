@@ -15,7 +15,15 @@
 
 ## 使用方式
 
-技能入口为 [SKILL.md](./SKILL.md)，名称为 `a100lab-gpu-workflow`。将其放入所用智能体支持的技能目录，并保留 `SKILL.md` 文件名；也可让智能体先读取该文件，再处理 GPU 任务。
+将技能安装到**当前用户的全局技能目录**，使其在该用户的各个项目中均可使用。以服务器上的 Claude Code 为例，文件位置为：
+
+```text
+~/.claude/skills/a100lab-gpu-workflow/SKILL.md
+```
+
+`~` 表示当前服务器用户的主目录。创建 `a100lab-gpu-workflow` 子目录，将本仓库的 [SKILL.md](./SKILL.md) 下载到其中，保留文件名；无需复制 README。安装后重新启动 Claude Code，可通过 `/a100lab-gpu-workflow` 显式调用，也可由智能体根据 GPU 任务需求加载。
+
+其他智能体请使用其支持的个人全局技能目录。
 
 使用前需已取得服务器账号及 Slurm 提交权限。具体操作与限制以技能正文和服务器当前配置为准。
 
