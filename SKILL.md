@@ -31,7 +31,7 @@ description: 用于需要调用 a100lab 服务器本机 GPU 的任务，在编�
 
 - **资源分配与执行**： 以单张 GPU 为基本申请单位，可申请多卡。所有普通用户 GPU 作业通过 `sbatch` 提交到唯一的 `compute` 分区，由 Slurm 分配 GPU、以提交者身份启动脚本并管理运行，结束后释放资源。用户通过提交任务、查询状态和读取结果使用算力，不能自行占卡进行交互调试；登录侧 `nvidia-smi` 权限不足属于正常现象。
 
-- **优先级与抢占**： short 为单卡任务，每用户同时最多运行一个，可抢占 normal，但不保证立即启动。normal 最长运行 24 小时，同一用户在 normal 下同时运行的作业合计最多使用 4 张 GPU。另有管理员临时授权的 `urgent`，优先级高于 short。
+- **优先级与抢占**： short 为单卡任务，每用户同时最多运行一个，可抢占 normal，但不保证立即启动。normal 最长运行 24 小时，同一用户在 normal 下同时运行的作业合计最多使用 4 张 GPU。另有管理员临时授权的 `urgent`，优先级高于 short，使用方式见第 4 节末尾。
 
 - **重排与恢复**： 长任务配置 `--requeue`，被抢占后由 Slurm 重新排队并再次启动脚本；代码需保存 checkpoint 并在启动时加载，才能从断点继续。相关代码要求见第 3 节，提交与查询见第 4、5 节。
 
@@ -134,6 +134,41 @@ sbatch --parsable --chdir="$PWD" \
 例如返回 `228`，对应日志为 `logs/train-228.out` 和 `logs/train-228.err`。记录 JobID、脚本、资源参数及日志和产物路径，随后按第 5 节跟踪。若返回 `JobID;Cluster`，查询时使用分号前的 JobID；提交报错时不得将错误文本当作作业号。
 
 默认提交后立即返回终端，任务由 Slurm 后台管理。需要等待结束时可在首次提交中加 `--wait`，但它不会直接显示作业日志。提交结果不明时先查队列和记录，避免重复提交。
+
+### 已获授权时：使用 urgent 提交
+
+urgent 是管理员限时授予的 Slurm 调度权限，不是新的 Linux 用户或 sudo 权限。普通用户仍使用自己的账号、同一份作业脚本和 `compute` 分区，通过 `sbatch` 提交。
+
+**权限范围**： urgent 的 QOS 优先级高于 short 和 normal，按当前运维规则不被这两类作业抢占，但不保证立即获得资源。部署记录中的 urgent 上限为每用户在该 QOS 下同时使用 4 张 GPU，单作业最长 24 小时；CPU、主机内存和节点可用资源仍有限制。授权不允许直跑 GPU、交互占卡或修改系统配置。
+
+1. **确认授权**： 向管理员确认 urgent 已生效、到期时间和本次允许的使用范围。可查询自己的账户关联，检查 QOS 列表是否包含 urgent：
+
+   ```bash
+   sacctmgr -n show assoc users="$USER" format=Cluster,Account,User,QOS,DefaultQOS -p
+   ```
+
+   以本集群对应关联为准；查询被限制时请管理员确认。获得授权不等于已有作业自动升级，也不能仅凭授权就认定新作业已使用 urgent。
+
+2. **提交指定任务**： 完成前述脚本和路径检查后，在提交命令中增加 `--qos=urgent`，明确本次使用 urgent，不修改脚本作为普通任务时的默认行为：
+
+   ```bash
+   sbatch --parsable --qos=urgent --chdir="$PWD" \
+     --output="$PWD/logs/train-%j.out" \
+     --error="$PWD/logs/train-%j.err" \
+     "$PWD/train.sh"
+   ```
+
+   使用相同任务已提交的作业号继续跟踪，不为切换 urgent 重复提交副本；若需调整已有作业，联系管理员处理。
+
+3. **核对实际等级**： 记录返回的 JobID，通过 `scontrol show job 作业号` 确认 `QOS=urgent`，也可用以下命令查询记账结果：
+
+   ```bash
+   sacct -j "$jobid" --format=JobID,QOS,State,Elapsed,Timelimit
+   ```
+
+   若提交提示 `Invalid qos`，或实际 QOS 不是 urgent，报告管理员核对授权与提交插件，不自动反复重提。
+
+**到期处理**： 授权有效期与作业运行时限是两回事。例如，授权 2 小时不等于每个作业可额外运行 2 小时，也不代表能在授权到期后一直保留 urgent 待遇。权限由管理员脚本到期回收；已有排队或运行作业是否降级、如何处理，以服务器回收实现为准，跨越授权到期时间的任务应提前确认。到期后新提交的普通任务去掉 `--qos=urgent`，由系统按时长分级。
 
 ## 5. 状态监控与异常处理
 
